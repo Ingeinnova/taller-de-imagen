@@ -108,6 +108,17 @@ label.f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--
 #vers small{position:absolute;left:0;right:0;bottom:0;background:#000a;font-size:10px;padding:2px 4px;text-align:left}
 .refrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .refrow img{width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+#zList{display:flex;flex-direction:column;gap:10px}
+.zc{display:grid;grid-template-columns:auto 1fr auto;gap:8px 10px;align-items:start;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.zc.flash{border-color:var(--acc)}
+.zb{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:600 15px var(--mono);color:#fff;border:2px solid #fff}
+.zc textarea{min-height:60px}
+.zc .chips{grid-column:2/4}
+.zc .chip{padding:5px 9px;font-size:12px}
+.zx{width:34px;height:34px;border-radius:8px;color:var(--mute);border:1px solid var(--line)}
+.zx:hover{color:var(--danger);border-color:var(--danger)}
+#zAdd.on{outline:2px solid var(--fg);outline-offset:2px}
+.zempty{border:1px dashed var(--line);border-radius:10px;padding:14px;text-align:center}
 
 /* bienvenida */
 #welcome{position:absolute;inset:0;display:grid;place-items:center;padding:20px}
@@ -224,24 +235,26 @@ label.f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--
     </section>
 
     <section class="p" id="pAI" hidden>
-      <div class="grp">
-        <div class="step"><b>1</b><span class="sub">Elige qué hacer</span></div>
-        <div class="chips" id="aiChips"></div>
+      <div class="grp full">
+        <div class="step"><b>1</b><span class="sub">Marca las zonas a cambiar</span></div>
+        <p class="hint">Toca «Marcar zona» y encierra con el lápiz o el dedo la parte a cambiar (o solo tócala). Aparece su número; escribe abajo qué hacer en cada una. Con el Apple Pencil puedes escribir a mano dentro del recuadro.</p>
+        <div class="btns"><button class="btn pri" id="zAdd">+ Marcar zona</button><button class="btn" id="zClear">Borrar todas las zonas</button></div>
+        <div id="zList"></div>
       </div>
       <div class="grp">
-        <div class="step"><b>2</b><span class="sub">Descríbelo con tus palabras</span></div>
-        <textarea id="aiPrompt" placeholder="Ej.: cambia el piso por porcelanato gris claro y deja las paredes en blanco hueso"></textarea>
+        <div class="step"><b>2</b><span class="sub">Indicación general (opcional)</span></div>
+        <div class="chips" id="aiChips"></div>
+        <textarea id="aiPrompt" placeholder="Para toda la imagen. Ej.: mejora la luz y deja el cielo despejado"></textarea>
+      </div>
+      <div class="grp">
+        <div class="step"><b>3</b><span class="sub">Enviar a la IA</span></div>
+        <div class="seg" id="zMode"><button data-v="all" class="on">Todas las zonas juntas</button><button data-v="seq">Una por una (más preciso)</button></div>
         <div class="btns"><button class="btn pri" id="aiEdit">Editar la imagen</button><button class="btn" id="aiNew">Crear imagen nueva</button></div>
         <div id="aiRes" class="res" hidden>
           <div>Resultado listo. Mantén presionado «Ver original» en el lienzo para comparar.</div>
           <div class="btns"><button class="btn" id="aiDiscard">Descartar</button><button class="btn" id="aiRetry">Otra versión</button><button class="btn pri" id="aiApply">Usar resultado</button></div>
         </div>
         <div id="aiStatus" class="hint"></div>
-      </div>
-      <div class="grp">
-        <div class="step"><b>3</b><span class="sub">Opcional</span></div>
-        <div class="hint">Pinta la zona exacta a cambiar:</div>
-        <div class="seg" id="maskSeg"><button data-v="mask">Pintar zona</button><button data-v="unmask">Borrar zona</button><button data-v="clear">Limpiar</button></div>
         <div class="refrow"><button class="btn" id="refBtn" style="flex:none">+ Foto de referencia</button><img id="refImg" alt="Imagen de referencia" hidden><button class="btn" id="refX" style="flex:none" hidden>Quitar</button><span class="hint" id="refHint">Material o estilo a imitar</span></div>
         <label class="tog"><input type="checkbox" id="aiAnn"> Enviar también mis dibujos y notas</label>
       </div>
@@ -316,7 +329,7 @@ const saveCfg=()=>LS.set('ti_cfg',cfg);
 const cv=$('#cv'),cx=cv.getContext('2d');let dpr=1;
 const S={base:null,objs:[],v:{k:1,x:0,y:0},tool:'pen',panel:'draw',color:'#ff3b30',wu:4,fu:5,fill:false,tbg:true,sel:null,
  hist:[],fut:[],mode:null,crop:null,adj:null,adjSrc:null,adjPrev:null,mask:null,maskUsed:false,pending:null,pendingIncl:false,showOrig:false,
- pen:false,num:1,versions:[],ref:null,dirty:false,lastAI:null};
+ pen:false,num:1,versions:[],ref:null,dirty:false,lastAI:null,zones:[],zmode:'all'};
 const Wd=()=>S.base?S.base.width:0, Hd=()=>S.base?S.base.height:0;
 const unit=()=>Math.max(1,Math.max(Wd(),Hd())/1000);
 const wpx=()=>S.wu*unit(), fpx=()=>S.fu*unit()*6;
@@ -407,7 +420,7 @@ function render(){raf=0;cx.setTransform(1,0,0,1,0,0);cx.clearRect(0,0,cv.width,c
  cx.drawImage(img,0,0,W,H);
  cx.save();cx.beginPath();cx.rect(0,0,W,H);cx.clip();
  if(!showPend)S.objs.forEach(o=>drawObj(cx,o));
- if(S.mask&&S.maskUsed&&S.panel==='ai'&&!showPend){cx.save();cx.globalAlpha=.45;cx.drawImage(S.mask,0,0,W,H);cx.restore()}
+ if(S.panel==='ai'&&!showPend){drawZones(cx,W,H,S.zones,1/k);if(act&&act.k==='zone')drawLasso(cx,act.pts,1/k)}
  cx.restore();
  if(S.sel&&S.objs.includes(S.sel)){const[bx,by,bw,bh]=bbox(S.sel);cx.save();cx.setLineDash([6/k,4/k]);cx.lineWidth=1.5/k;cx.strokeStyle='#f2a93b';cx.strokeRect(bx,by,bw,bh);cx.restore()}
 }
@@ -420,7 +433,7 @@ function drawCropOverlay(){const r=S.crop.r,k=S.v.k,W=Wd(),H=Hd();cx.save();cx.f
 
 /* ---------- carga de imágenes ---------- */
 function setNewBase(c,keepObjs=false){if(S.mode)cancelMode();if(S.base)pushHist();else{S.hist=[];S.fut=[];updUndo()}
- const oW=Wd(),oH=Hd();S.base=c;if(keepObjs&&oW){const sx=c.width/oW,sy=c.height/oH;mapObjs((x,y)=>[x*sx,y*sy],Math.sqrt(sx*sy))}else{S.objs=[];S.num=1}
+ const oW=Wd(),oH=Hd();S.base=c;if(!keepObjs)clearZones();if(keepObjs&&oW){const sx=c.width/oW,sy=c.height/oH;mapObjs((x,y)=>[x*sx,y*sy],Math.sqrt(sx*sy))}else{S.objs=[];S.num=1}
  S.sel=null;S.pending=null;$('#aiRes').hidden=true;$('#holdOrig').hidden=true;resetMask();$('#welcome').hidden=true;S.dirty=true;fit();updSel();setPanel(S.panel==='crop'||S.panel==='adjust'?'draw':S.panel,true)}
 async function loadFile(f){if(!f||!/^image\//.test(f.type))return toast('Ese archivo no es una imagen');const url=URL.createObjectURL(f);
  try{const im=await loadImg(url);setNewBase(cloneCanvas(im,4096));if(S.panel==='ai')renderVers()}catch(e){toast(e.message)}finally{URL.revokeObjectURL(url)}}
@@ -470,7 +483,7 @@ function startTool(p,e){const t=S.tool;
  if(t==='num'){pushHist();S.objs.push({t:'num',x:p.x,y:p.y,n:S.num++,c:S.color,w:wpx(),fs:fpx()});draw();return}
  if(t==='sel'){const o=topHit(p);const was=S.sel;S.sel=o;updSel();if(o){pushHist();act={k:'msel',o,last:p,moved:false,was}}draw();return}
  if(t==='erase'){pushHist();act={k:'erase',any:false};eraseAt(p);return}
- if(t==='mask'||t==='unmask'){act={k:'mask',last:p,erase:t==='unmask'};maskPaint(p,{x:p.x+.01,y:p.y},act.erase);return}
+ if(t==='zone'){const z=zoneAtBadge(p);if(z){flashZone(z.n);return}act={k:'zone',pts:[[p.x,p.y]]};return}
 }
 function snapAng(o,p,e){if(!e.shiftKey)return[p.x,p.y];const dx=p.x-o.a[0],dy=p.y-o.a[1],an=Math.round(Math.atan2(dy,dx)/(Math.PI/12))*(Math.PI/12),l=Math.hypot(dx,dy);return[o.a[0]+l*Math.cos(an),o.a[1]+l*Math.sin(an)]}
 function toolMove(p,e){if(!act)return;
@@ -478,7 +491,7 @@ function toolMove(p,e){if(!act)return;
  else if(act.k==='shape'){act.o.b=snapAng(act.o,p,e)}
  else if(act.k==='msel'){moveObj(act.o,p.x-act.last.x,p.y-act.last.y);act.last=p;act.moved=true}
  else if(act.k==='erase')eraseAt(p);
- else if(act.k==='mask'){maskPaint(act.last,p,act.erase);act.last=p}
+ else if(act.k==='zone'){const P=act.pts,l=P[P.length-1];if(Math.hypot(p.x-l[0],p.y-l[1])>2/S.v.k)P.push([p.x,p.y])}
  else if(act.k==='crop')cropMove(p);
 }
 function eraseAt(p){const o=topHit(p);if(o&&o.t!=='stamp'||o&&o.t==='stamp'){S.objs.splice(S.objs.indexOf(o),1);act.any=true;draw()}}
@@ -490,7 +503,48 @@ async function toolUp(a,p,e){
   if(r&&r.s.trim()){pushHist();S.objs.push({t:'text',x:a.p.x,y:a.p.y,s:r.s.replace(/\s+$/,''),c:S.color,w:wpx(),fs:fpx(),bg:S.tbg});draw()}}
  else if(a.k==='msel'){if(!a.moved){dropHist();const now=Date.now();if(a.was===a.o&&(a.o.t==='text'||a.o.t==='cota'))editSel();lastTap={t:now,o:a.o}}}
  else if(a.k==='erase'){if(!a.any)dropHist()}
+ else if(a.k==='zone'){addZone(a.pts)}
 }
+
+/* ---------- zonas numeradas para IA ---------- */
+const ZCOL=[['#ff3b30','rojo'],['#0a84ff','azul'],['#34c759','verde'],['#ff9f0a','naranja'],['#bf5af2','morado'],['#ffd60a','amarillo'],['#ff2d92','rosado'],['#64d2ff','celeste']];
+const ZCHIPS=[['Quitar','Quitar por completo lo que hay aquí y rellenar de forma natural, coherente con el entorno.'],['Limpiar','Limpiar y dejar como nuevo, sin manchas, polvo ni deterioro.'],['Pintar','Pintar de color '],['Cambiar material','Cambiar el material por '],['Reparar','Reparar los daños (grietas, humedad, desprendimientos) y dejar el acabado uniforme.']];
+function zoneCenter(z){let x=0,y=0;z.pts.forEach(q=>{x+=q[0];y+=q[1]});return[x/z.pts.length,y/z.pts.length]}
+function zonePlace(z){const[x,y]=zoneCenter(z);const v=y<.34?'arriba':y>.66?'abajo':'en el medio',h=x<.34?'a la izquierda':x>.66?'a la derecha':'al centro';return v==='en el medio'&&h==='al centro'?'en el centro':v+' '+h}
+function drawZones(g,W,H,zones,u){for(const z of zones){const col=ZCOL[(z.n-1)%ZCOL.length][0];g.save();g.beginPath();z.pts.forEach((q,i)=>i?g.lineTo(q[0]*W,q[1]*H):g.moveTo(q[0]*W,q[1]*H));g.closePath();
+ g.globalAlpha=.2;g.fillStyle=col;g.fill();g.globalAlpha=1;g.lineJoin='round';g.lineWidth=5*u;g.strokeStyle='#fff';g.stroke();g.lineWidth=3*u;g.strokeStyle=col;g.stroke();
+ const[cx0,cy0]=zoneCenter(z),r=18*u;g.beginPath();g.arc(cx0*W,cy0*H,r,0,7);g.fillStyle=col;g.fill();g.lineWidth=3*u;g.strokeStyle='#fff';g.stroke();
+ g.fillStyle='#fff';g.font=`700 ${r*1.15}px "IBM Plex Sans",sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(z.n,cx0*W,cy0*H+r*.05);g.restore()}}
+function drawLasso(g,P,u){if(P.length<2)return;g.save();g.setLineDash([8*u,6*u]);g.lineWidth=3*u;g.strokeStyle='#fff';g.beginPath();P.forEach((q,i)=>i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1]));g.stroke();g.restore()}
+function zoneAtBadge(p){for(const z of S.zones){const[x,y]=zoneCenter(z);if(Math.hypot(p.x-x*Wd(),p.y-y*Hd())<24/S.v.k)return z}return null}
+function addZone(P){const W=Wd(),H=Hd();let len=0;for(let i=1;i<P.length;i++)len+=Math.hypot(P[i][0]-P[i-1][0],P[i][1]-P[i-1][1]);
+ let pts;if(len<30/S.v.k||P.length<4){const r=Math.max(W,H)*.06,c=P[0];pts=[];for(let i=0;i<24;i++){const a=i/24*Math.PI*2;pts.push([c[0]+r*Math.cos(a),c[1]+r*Math.sin(a)])}}else pts=P;
+ const n=S.zones.length?Math.max(...S.zones.map(z=>z.n))+1:1;S.zones.push({n,pts:pts.map(q=>[clamp(q[0]/W,0,1),clamp(q[1]/H,0,1)]),text:''});renderZones();draw();flashZone(n);
+ setTip('Zona '+n+' marcada. Escribe abajo qué hacer en ella, o marca otra zona.')}
+function renumberZones(){S.zones.forEach((z,i)=>z.n=i+1)}
+function renderZones(){const el=$('#zList');el.innerHTML='';
+ if(!S.zones.length){el.innerHTML='<div class="zempty hint">Aún no hay zonas. Toca «+ Marcar zona» y encierra el techo, las ventanas, la fachada…</div>';return}
+ S.zones.forEach(z=>{const col=ZCOL[(z.n-1)%ZCOL.length],d=document.createElement('div');d.className='zc';d.dataset.n=z.n;
+  d.innerHTML=`<span class="zb" style="background:${col[0]}">${z.n}</span><textarea id="zt${z.n}" placeholder="Zona ${z.n} (${col[1]}): ¿qué hacer aquí? Ej.: teja arquitectónica color terracota"></textarea><button class="zx" title="Quitar zona ${z.n}" aria-label="Quitar zona ${z.n}">✕</button><div class="chips"></div>`;
+  const ta=d.querySelector('textarea');ta.value=z.text;ta.oninput=()=>{z.text=ta.value};
+  d.querySelector('.zx').onclick=()=>{S.zones.splice(S.zones.indexOf(z),1);renumberZones();renderZones();draw()};
+  ZCHIPS.forEach(([l,t])=>{const b=document.createElement('button');b.className='chip';b.textContent=l;b.onclick=()=>{ta.value=(ta.value.trim()?ta.value.trim()+' ':'')+t;z.text=ta.value;ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length)};d.querySelector('.chips').appendChild(b)});
+  el.appendChild(d)})}
+function flashZone(n){$('#panel').classList.remove('min');syncSheetTg();const d=$(`#zList .zc[data-n="${n}"]`);if(!d)return;d.scrollIntoView({block:'nearest',behavior:'smooth'});d.classList.add('flash');setTimeout(()=>d.classList.remove('flash'),1600)}
+function clearZones(){S.zones=[];renderZones()}
+function zoneTool(){if(!S.base)return toast('Primero abre una imagen');S.tool=S.tool==='zone'?'move':'zone';setPanel('ai')}
+function zoneMask(zs,w,h){const m=newCanvas(w,h),g=m.getContext('2d');g.fillStyle='#000';g.fillRect(0,0,w,h);g.globalCompositeOperation='destination-out';g.lineJoin='round';g.lineWidth=Math.max(w,h)*.012;
+ for(const z of zs){g.beginPath();z.pts.forEach((q,i)=>i?g.lineTo(q[0]*w,q[1]*h):g.moveTo(q[0]*w,q[1]*h));g.closePath();g.fill();g.stroke()}return m}
+function zonePrompt(zs,general,{prov,ref,annotated}){const L=[];
+ if(zs.length){L.push(annotated?'Te envío la foto original (primera imagen) y la misma foto con zonas numeradas marcadas con contornos de color (segunda imagen). Aplica los cambios sobre la foto original, cada uno SOLO dentro de su zona:':'Aplica los cambios sobre la foto, cada uno SOLO dentro de su zona (indicada por la máscara):');
+  zs.forEach(z=>L.push(`- Zona ${z.n} (${annotated?'contorno '+ZCOL[(z.n-1)%ZCOL.length][1]+', ':''}ubicada ${zonePlace(z)}): ${z.text.trim()}`));
+  if(general)L.push(`Indicación general para toda la imagen: ${general}`);
+  L.push('Todo lo que está fuera de las zonas debe quedar exactamente igual.');
+  if(annotated)L.push('El resultado final NO debe mostrar números, contornos ni colores de las marcas: son solo una guía.')}
+ else L.push(`Edita la imagen según esta instrucción: ${general}`);
+ L.push('Conserva la composición, el encuadre, la perspectiva, las proporciones y la iluminación originales. No agregues textos, logotipos ni marcas de agua.');
+ if(ref)L.push('La última imagen adjunta es una referencia de material, estilo u objeto; úsala como guía para el cambio.');
+ return L.join('\n')}
 
 /* ---------- recorte ---------- */
 function cropFrame(){const c=S.crop;return c.r}
@@ -514,11 +568,11 @@ function applyCrop(){const c=S.crop,W=Wd(),H=Hd(),r={x:Math.round(c.r.x),y:Math.
  g.translate(-r.x,-r.y);g.translate(W/2,H/2);g.rotate(c.ang*Math.PI/180);g.scale(1/c.s,1/c.s);g.translate(-W/2,-H/2);g.drawImage(S.base,0,0);
  const an=c.ang*Math.PI/180,co=Math.cos(an),si=Math.sin(an);
  mapObjs((x,y)=>{const dx=x-W/2,dy=y-H/2;return[(dx*co-dy*si)/c.s+W/2-r.x,(dx*si+dy*co)/c.s+H/2-r.y]},1/c.s);
- S.base=out;S.mode=null;S.crop=null;resetMask();fit();setPanel('draw',true)}
+ S.base=out;S.mode=null;S.crop=null;resetMask();clearZones();fit();setPanel('draw',true)}
 function rot90(cw){pushHist();const W=Wd(),H=Hd(),out=newCanvas(H,W),g=out.getContext('2d');
  if(cw){g.translate(H,0);g.rotate(Math.PI/2)}else{g.translate(0,W);g.rotate(-Math.PI/2)}g.drawImage(S.base,0,0);
- mapObjs(cw?(x,y)=>[H-y,x]:(x,y)=>[y,W-x]);S.base=out;resetMask();S.crop={ang:0,s:1,asp:S.crop.asp,r:cropFit(S.crop.asp)};$('#rAng').value=0;$('#vAng').textContent='0°';fit()}
-function flipH(){pushHist();const W=Wd(),out=newCanvas(W,Hd()),g=out.getContext('2d');g.translate(W,0);g.scale(-1,1);g.drawImage(S.base,0,0);mapObjs((x,y)=>[W-x,y]);S.base=out;resetMask();draw()}
+ mapObjs(cw?(x,y)=>[H-y,x]:(x,y)=>[y,W-x]);S.base=out;resetMask();clearZones();S.crop={ang:0,s:1,asp:S.crop.asp,r:cropFit(S.crop.asp)};$('#rAng').value=0;$('#vAng').textContent='0°';fit()}
+function flipH(){pushHist();const W=Wd(),out=newCanvas(W,Hd()),g=out.getContext('2d');g.translate(W,0);g.scale(-1,1);g.drawImage(S.base,0,0);mapObjs((x,y)=>[W-x,y]);S.base=out;resetMask();clearZones();draw()}
 
 /* ---------- luz y color ---------- */
 const ADJ0={exp:0,ct:0,sh:0,hl:0,sat:0,temp:0,sharp:0,gray:false,lo:0,hi:255};
@@ -590,24 +644,32 @@ async function oaGen(prompt,asp){const size={'1:1':'1024x1024','4:3':'1536x1024'
  const r=await fetch('https://api.openai.com/v1/images/generations',{method:'POST',headers:{Authorization:'Bearer '+cfg.okey,'Content-Type':'application/json'},body:JSON.stringify({model:cfg.omodel,prompt,size,quality:cfg.oq})});return oaOut(r)}
 async function oaOut(r){const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(apiErr(j.error&&j.error.message,r.status));const d=(j.data||[])[0];if(!d)throw new Error('OpenAI no devolvió imagen.');return d.b64_json?'data:image/png;base64,'+d.b64_json:d.url}
 function apiErr(m,st){if(st===401||st===403)return'La clave fue rechazada ('+st+'). Revísala en Configuración.'+(m?' Detalle: '+m:'');if(st===429)return'Se alcanzó el límite de uso o no hay saldo en la cuenta (429). '+(m||'');if(st===404)return'El modelo configurado no existe para tu cuenta. Elige otro en Configuración. '+(m||'');return(m||'Error '+st)}
-async function runAI(kind,retry){if(needKey())return;const prompt=(retry&&S.lastAI?S.lastAI.prompt:$('#aiPrompt').value).trim();if(!prompt){$('#aiPrompt').focus();return toast('Escribe qué quieres hacer')}
- if(prompt.includes('[elemento]'))return toast('Reemplaza [elemento] y [nuevo material] en la instrucción');
- if(kind==='edit'&&!S.base)return toast('Primero abre una imagen o crea una nueva');
- const prov=cfg.prov;S.lastAI={kind,prompt};const st=$('#aiStatus');st.className='hint';st.textContent='';
- $$('#aiEdit,#aiNew,#aiRetry').forEach(b=>b.disabled=true);busy(true,'La IA está trabajando… suele tardar entre 10 y 60 segundos');const t0=Date.now();
- try{let url;
-  if(kind==='new'){const asp=$('#aiAsp').value;url=prov==='google'?await gemini(prompt,[],asp):await oaGen(prompt,asp)}
-  else{const incl=$('#aiAnn').checked,mask=S.maskUsed,src=composite(incl,prov==='google'?2048:1536);S.pendingIncl=incl;
-   const refC=S.ref?cloneCanvas(S.ref,1024):null;
-   if(prov==='google'){const imgs=[{mime:'image/jpeg',b64:await canvasToB64(src,'image/jpeg',.92)}];
-    if(mask){const ov=cloneCanvas(src),g=ov.getContext('2d');g.globalAlpha=.55;g.drawImage(S.mask,0,0,ov.width,ov.height);imgs.push({mime:'image/jpeg',b64:await canvasToB64(ov,'image/jpeg',.9)})}
-    if(refC)imgs.push({mime:'image/jpeg',b64:await canvasToB64(refC,'image/jpeg',.9)});
-    url=await gemini(wrapPrompt(prompt,{mask,ref:!!refC,prov}),imgs)}
-   else{let mb=null;if(mask){const m=newCanvas(src.width,src.height),g=m.getContext('2d');g.fillStyle='#000';g.fillRect(0,0,m.width,m.height);g.globalCompositeOperation='destination-out';g.drawImage(S.mask,0,0,m.width,m.height);mb=await canvasToBlob(m)}
-    url=await oaEdit(wrapPrompt(prompt,{mask,ref:!!refC,prov}),await canvasToBlob(src),mb,refC?await canvasToBlob(refC):null)}}
-  const im=await loadImg(url),c=cloneCanvas(im);
+async function runAI(kind){if(needKey())return;const general=$('#aiPrompt').value.trim(),zs=S.zones.filter(z=>z.text.trim());
+ const st=$('#aiStatus');st.className='hint';st.textContent='';
+ if(kind==='new'){if(!general){$('#aiPrompt').focus();return toast('Describe en el recuadro 2 la imagen que quieres crear')}}
+ else{if(!S.base)return toast('Primero abre una imagen o crea una nueva');
+  const empty=S.zones.find(z=>!z.text.trim());if(empty){flashZone(empty.n);return toast('Escribe qué hacer en la zona '+empty.n+', o quítala')}
+  if(!zs.length&&!general){return toast('Marca una zona y escribe qué hacer, o escribe una indicación general')}
+  if(/\[elemento\]|\[nuevo material\]/.test(general))return toast('Reemplaza [elemento] y [nuevo material] en la indicación')}
+ const prov=cfg.prov;S.lastAI={kind};S.tool=S.tool==='zone'?'move':S.tool;setPanel('ai',true);
+ $$('#aiEdit,#aiNew,#aiRetry').forEach(b=>b.disabled=true);const t0=Date.now();
+ try{let c;
+  if(kind==='new'){busy(true,'Creando la imagen… suele tardar entre 10 y 60 segundos');const asp=$('#aiAsp').value;const url=prov==='google'?await gemini(general,[],asp):await oaGen(general,asp);c=cloneCanvas(await loadImg(url))}
+  else{const incl=$('#aiAnn').checked;S.pendingIncl=incl;const refC=S.ref?cloneCanvas(S.ref,1024):null;
+   let cur=composite(incl,prov==='google'?2048:1536);
+   const steps=S.zmode==='seq'&&zs.length>1?zs.map((z,k)=>({zs:[z],gen:k===zs.length-1?general:''})):[{zs,gen:general}];
+   for(let k=0;k<steps.length;k++){const stp=steps[k];busy(true,steps.length>1?`Zona ${stp.zs[0].n} (${k+1} de ${steps.length})… la IA está trabajando`:'La IA está trabajando… suele tardar entre 10 y 60 segundos');
+    const ann=stp.zs.length>0,src=cur;let url;
+    if(prov==='google'){const imgs=[{mime:'image/jpeg',b64:await canvasToB64(src,'image/jpeg',.92)}];
+     if(ann){const ov=cloneCanvas(src);drawZones(ov.getContext('2d'),ov.width,ov.height,stp.zs,Math.max(ov.width,ov.height)/900);imgs.push({mime:'image/jpeg',b64:await canvasToB64(ov,'image/jpeg',.9)})}
+     if(refC)imgs.push({mime:'image/jpeg',b64:await canvasToB64(refC,'image/jpeg',.9)});
+     url=await gemini(zonePrompt(stp.zs,stp.gen,{prov,ref:!!refC,annotated:ann}),imgs)}
+    else{const mb=ann?await canvasToBlob(zoneMask(stp.zs,src.width,src.height)):null;
+     url=await oaEdit(zonePrompt(stp.zs,stp.gen,{prov,ref:!!refC,annotated:false}),await canvasToBlob(src),mb,refC?await canvasToBlob(refC):null)}
+    const out=cloneCanvas(await loadImg(url));cur=(out.width!==src.width||out.height!==src.height)?(()=>{const r=newCanvas(src.width,src.height);r.getContext('2d').drawImage(out,0,0,src.width,src.height);return r})():out}
+   c=cur}
   if(kind==='new'){if(!S.versions.length&&S.base)addVersion(S.base,'Original');setNewBase(c);addVersion(c,'Creada');st.textContent='Imagen creada en '+Math.round((Date.now()-t0)/1000)+' s.'}
-  else{S.pending=c;$('#aiRes').hidden=false;$('#aiRes').scrollIntoView({block:'nearest',behavior:'smooth'});$('#holdOrig').hidden=false;st.textContent='Listo en '+Math.round((Date.now()-t0)/1000)+' s. Mantén presionado el botón del lienzo para comparar.';draw()}
+  else{S.pending=c;$('#aiRes').hidden=false;$('#aiRes').scrollIntoView({block:'nearest',behavior:'smooth'});$('#holdOrig').hidden=false;st.textContent='Listo en '+Math.round((Date.now()-t0)/1000)+' s. Mantén presionado «Ver original» para comparar.';draw()}
  }catch(e){st.className='hint err';st.textContent=(e&&e.message==='Failed to fetch')?'No hubo conexión con el servicio de IA. Revisa tu internet e inténtalo de nuevo.':(e.message||String(e))}
  finally{busy(false);$$('#aiEdit,#aiNew,#aiRetry').forEach(b=>b.disabled=false)}}
 function applyPending(){if(!S.pending)return;if(!S.versions.length)addVersion(S.base,'Original');pushHist();const oW=Wd(),oH=Hd(),c=S.pending;S.base=c;
@@ -648,7 +710,7 @@ const HINTS={move:'Arrastra para mover la foto. Pellizca con dos dedos para acer
  line:'Arrastra para trazar una línea recta.',rect:'Arrastra en diagonal para dibujar el rectángulo.',ell:'Arrastra en diagonal para dibujar el círculo.',text:'Toca donde quieres escribir.',cota:'Arrastra de un extremo al otro y escribe la medida.',
  num:'Toca para poner 1, 2, 3… sobre daños o ítems.',erase:'Toca o pasa sobre un dibujo para borrarlo. La foto no se borra.',
  crop:'Arrastra las esquinas del marco. Luego toca «Aplicar recorte».',adjust:'Prueba un arreglo rápido o mueve los ajustes. Luego «Aplicar ajustes».',
- stamp:'Llena los datos de la obra y toca «Insertar sello en la foto».',ai:'Elige qué hacer o escríbelo, y toca «Editar la imagen».',mask:'Pinta sobre la zona que la IA debe cambiar.',unmask:'Pasa sobre la zona pintada para quitarla.'};
+ stamp:'Llena los datos de la obra y toca «Insertar sello en la foto».',ai:'Toca «+ Marcar zona» y encierra cada parte que quieres cambiar.',zone:'Encierra con el lápiz la parte a cambiar, o tócala. Aparecerá su número.'};
 const PANEL_OF={crop:'crop',adjust:'adjust',stamp:'stamp',ai:'ai'};
 function setTip(t){const el=$('#tip');if(!S.base||!t){el.hidden=true;return}el.textContent=t;el.hidden=false;el.classList.remove('fade');clearTimeout(setTip._t);setTip._t=setTimeout(()=>el.classList.add('fade'),5000)}
 function buildUI(){
@@ -665,7 +727,7 @@ function buildUI(){
  PRESETS.forEach(([l,f])=>{const b=document.createElement('button');b.className='chip';b.textContent=l;b.onclick=()=>{S.adj=f();syncSliders();adjPreview()};$('#preChips').appendChild(b)});
  SL.forEach(([k,l,mn,mx])=>{const d=document.createElement('div');d.className='rng';d.innerHTML=`<span>${l}</span><input type="range" id="r_${k}" min="${mn}" max="${mx}" value="0"><span id="v_${k}">0</span>`;
   $('#sliders').appendChild(d);d.querySelector('input').oninput=e=>{S.adj[k]=+e.target.value;$('#v_'+k).textContent=e.target.value;adjPreview()}});
- QUICK.forEach(([l,p])=>{const b=document.createElement('button');b.className='chip';b.textContent=l;b.onclick=()=>{$('#aiPrompt').value=p;if(l==='Quitar lo marcado'&&!S.maskUsed){setMaskTool('mask');toast('Pinta sobre lo que quieres quitar y luego toca «Editar esta imagen»',4000)}};$('#aiChips').appendChild(b)});
+ QUICK.forEach(([l,p])=>{const b=document.createElement('button');b.className='chip';b.textContent=l;b.onclick=()=>{$('#aiPrompt').value=p;if(l==='Quitar lo marcado'&&!S.zones.length){if(S.tool!=='zone')zoneTool();toast('Encierra lo que quieres quitar y luego toca «Editar la imagen»',4000)}};$('#aiChips').appendChild(b)});
  const st=LS.get('ti_stamp',{});['Proj','Place','Comp','Note'].forEach(k=>{$('#st'+k).value=st[k]||''});$('#stDate').value=new Date().toISOString().slice(0,10);
 }
 function setColor(c){S.color=c;$$('#colors button').forEach(b=>b.classList.toggle('on',b.dataset.c===c));propChange('c',c)}
@@ -675,13 +737,13 @@ function pickTool(t){if(S.mode&&t!==S.mode){cancelMode()}
   setPanel(PANEL_OF[t]);if(t==='crop')enterCrop();if(t==='adjust')enterAdjust();return}
  S.tool=t;S.lastDraw=t;if(t!=='sel'){S.sel=null;updSel()}setPanel('draw');draw()}
 function setPanel(p,keepTool){S.panel=p;$('#pDraw').hidden=p!=='draw';$('#pCrop').hidden=p!=='crop';$('#pAdj').hidden=p!=='adjust';$('#pStamp').hidden=p!=='stamp';$('#pAI').hidden=p!=='ai';
- if(p!=='ai'&&(S.tool==='mask'||S.tool==='unmask'))S.tool='pen';if(p==='ai'){renderVers();if(S.tool!=='mask'&&S.tool!=='unmask')S.tool='move'}
+ if(p!=='ai'&&S.tool==='zone')S.tool=S.lastDraw||'pen';if(p==='ai'){renderVers();if(S.tool!=='zone')S.tool='move'}
  $$('#rail .md').forEach(b=>b.classList.toggle('on',b.dataset.m===p));$$('#dtools .tb').forEach(b=>b.classList.toggle('on',b.dataset.t===S.tool));
- $$('#maskSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.tool));
+ $('#zAdd').classList.toggle('on',S.tool==='zone');$('#zAdd').textContent=S.tool==='zone'?'✓ Marcando zonas (toca para terminar)':'+ Marcar zona';
  $('#sheetTitle').textContent={draw:'Dibujar · '+(DTOOLS.find(t=>t[0]===S.tool)||['','Lápiz'])[1],crop:'Recortar y girar',adjust:'Luz y color',stamp:'Sello de registro con datos de la obra',ai:'Editar con inteligencia artificial'}[p];
- if(!keepTool)$('#panel').classList.remove('min');syncSheetTg();setTip(p==='draw'?HINTS[S.tool]:(p==='ai'&&(S.tool==='mask'||S.tool==='unmask'))?HINTS[S.tool]:HINTS[p]);draw()}
+ if(!keepTool)$('#panel').classList.remove('min');syncSheetTg();setTip(p==='draw'?HINTS[S.tool]:(p==='ai'&&S.tool==='zone')?HINTS.zone:HINTS[p]);draw()}
 function syncSheetTg(){$('#sheetTg').textContent=$('#panel').classList.contains('min')?'Mostrar opciones':'Ocultar'}
-function setMaskTool(v){if(v==='clear'){resetMask();draw();return}S.tool=S.tool===v?'move':v;setPanel('ai')}
+
 function updSel(){const s=S.sel;$('#selBox').hidden=!s;if(s){$('#sEdit').hidden=!(s.t==='text'||s.t==='cota');}propChange.h=false}
 async function editSel(){const o=S.sel;if(!o)return;const r=await ask(o.t==='cota'?'Medida de la cota':'Editar texto',[{id:'s',label:o.t==='cota'?'Valor':'Texto',type:o.t==='text'?'area':'text',value:o.s}],'Guardar');
  if(r&&r.s.trim()){pushHist();o.s=r.s.trim();draw()}}
@@ -710,8 +772,9 @@ function bind(){
  $('#aApply').onclick=applyAdjust;$('#aCancel').onclick=()=>{cancelMode();setPanel('draw')};
  $$('#stPos button').forEach(b=>b.onclick=()=>$$('#stPos button').forEach(x=>x.classList.toggle('on',x===b)));$('#stAdd').onclick=addStamp;
  $$('#aiProv button').forEach(b=>b.onclick=()=>{cfg.prov=b.dataset.v;saveCfg();syncProv()});
- $$('#maskSeg button').forEach(b=>b.onclick=()=>{if(!S.base)return toast('Primero abre una imagen');setMaskTool(b.dataset.v)});
- $('#aiEdit').onclick=()=>runAI('edit');$('#aiNew').onclick=()=>runAI('new');$('#aiRetry').onclick=()=>{discardPending();runAI(S.lastAI?S.lastAI.kind:'edit',true)};
+ $('#zAdd').onclick=zoneTool;$('#zClear').onclick=()=>{clearZones();draw()};
+ $$('#zMode button').forEach(b=>b.onclick=()=>{S.zmode=b.dataset.v;$$('#zMode button').forEach(x=>x.classList.toggle('on',x===b))});
+ $('#aiEdit').onclick=()=>runAI('edit');$('#aiNew').onclick=()=>runAI('new');$('#aiRetry').onclick=()=>{discardPending();runAI(S.lastAI?S.lastAI.kind:'edit')};
  $('#aiApply').onclick=applyPending;$('#aiDiscard').onclick=discardPending;
  const ho=$('#holdOrig');const on=e=>{e.preventDefault();S.showOrig=true;draw()},off=()=>{S.showOrig=false;draw()};
  ho.addEventListener('pointerdown',on);ho.addEventListener('pointerup',off);ho.addEventListener('pointerleave',off);ho.addEventListener('pointercancel',off);
@@ -733,7 +796,7 @@ function bind(){
  window.addEventListener('beforeunload',e=>{if(S.dirty&&S.base){e.preventDefault();e.returnValue=''}});
  document.addEventListener('gesturestart',e=>e.preventDefault());
 }
-buildUI();bind();syncProv();setColor('#ff3b30');pickTool('pen');resize();
+buildUI();bind();renderZones();syncProv();setColor('#ff3b30');pickTool('pen');resize();
 </script>
 </body>
 </html>
