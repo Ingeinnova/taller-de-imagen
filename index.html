@@ -119,6 +119,14 @@ label.f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--
 .zx:hover{color:var(--danger);border-color:var(--danger)}
 #zAdd.on{outline:2px solid var(--fg);outline-offset:2px}
 .zempty{border:1px dashed var(--line);border-radius:10px;padding:14px;text-align:center}
+.chip.hw{border-color:var(--acc);color:var(--acc)}
+#padCv{width:100%;height:260px;background:#fff;border-radius:10px;touch-action:none;display:block;border:1px solid var(--line)}
+.kbox{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--bg)}
+.kh{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.krow{display:flex;gap:6px}.krow input{flex:1;min-width:0}.krow .btn{flex:none}
+.kst{font-size:12.5px;font-weight:600}.kst.ok{color:var(--ok)}.kst.bad{color:var(--danger)}
+#aiConn{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
+#aiConn .dot{width:9px;height:9px;border-radius:50%;background:var(--danger)}#aiConn .dot.ok{background:var(--ok)}
 
 /* bienvenida */
 #welcome{position:absolute;inset:0;display:grid;place-items:center;padding:20px}
@@ -238,13 +246,14 @@ label.f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--
       <div class="grp full">
         <div class="step"><b>1</b><span class="sub">Marca las zonas a cambiar</span></div>
         <p class="hint">Toca «Marcar zona» y encierra con el lápiz o el dedo la parte a cambiar (o solo tócala). Aparece su número; escribe abajo qué hacer en cada una. Con el Apple Pencil puedes escribir a mano dentro del recuadro.</p>
-        <div class="btns"><button class="btn pri" id="zAdd">+ Marcar zona</button><button class="btn" id="zClear">Borrar todas las zonas</button></div>
+        <div class="btns"><button class="btn pri" id="zAdd">+ Marcar zona</button><button class="btn" id="nAdd">✍ Notas a mano sobre la foto</button><button class="btn" id="zClear">Borrar zonas y notas</button></div>
         <div id="zList"></div>
       </div>
       <div class="grp">
         <div class="step"><b>2</b><span class="sub">Indicación general (opcional)</span></div>
         <div class="chips" id="aiChips"></div>
         <textarea id="aiPrompt" placeholder="Para toda la imagen. Ej.: mejora la luz y deja el cielo despejado"></textarea>
+        <div class="btns"><button class="btn" id="hwGen">✍ Escribir a mano</button></div>
       </div>
       <div class="grp">
         <div class="step"><b>3</b><span class="sub">Enviar a la IA</span></div>
@@ -260,6 +269,7 @@ label.f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--
       </div>
       <div class="grp">
         <div class="sub">Motor de IA</div>
+        <div id="aiConn"></div>
         <div class="seg" id="aiProv"><button data-v="google">Google</button><button data-v="openai">OpenAI</button></div>
         <label class="f">Formato de imagen nueva<select id="aiAsp"><option value="16:9">16:9 horizontal</option><option value="4:3">4:3 horizontal</option><option value="1:1">1:1 cuadrada</option><option value="3:4">3:4 vertical</option><option value="9:16">9:16 vertical</option></select></label>
       </div>
@@ -329,7 +339,7 @@ const saveCfg=()=>LS.set('ti_cfg',cfg);
 const cv=$('#cv'),cx=cv.getContext('2d');let dpr=1;
 const S={base:null,objs:[],v:{k:1,x:0,y:0},tool:'pen',panel:'draw',color:'#ff3b30',wu:4,fu:5,fill:false,tbg:true,sel:null,
  hist:[],fut:[],mode:null,crop:null,adj:null,adjSrc:null,adjPrev:null,mask:null,maskUsed:false,pending:null,pendingIncl:false,showOrig:false,
- pen:false,num:1,versions:[],ref:null,dirty:false,lastAI:null,zones:[],zmode:'all'};
+ pen:false,num:1,versions:[],ref:null,dirty:false,lastAI:null,zones:[],zmode:'all',notes:[]};
 const Wd=()=>S.base?S.base.width:0, Hd=()=>S.base?S.base.height:0;
 const unit=()=>Math.max(1,Math.max(Wd(),Hd())/1000);
 const wpx=()=>S.wu*unit(), fpx=()=>S.fu*unit()*6;
@@ -420,7 +430,7 @@ function render(){raf=0;cx.setTransform(1,0,0,1,0,0);cx.clearRect(0,0,cv.width,c
  cx.drawImage(img,0,0,W,H);
  cx.save();cx.beginPath();cx.rect(0,0,W,H);cx.clip();
  if(!showPend)S.objs.forEach(o=>drawObj(cx,o));
- if(S.panel==='ai'&&!showPend){drawZones(cx,W,H,S.zones,1/k);if(act&&act.k==='zone')drawLasso(cx,act.pts,1/k)}
+ if(S.panel==='ai'&&!showPend){drawZones(cx,W,H,S.zones,1/k);drawNotes(cx,S.notes,Math.max(W,H));if(act&&act.k==='zone')drawLasso(cx,act.pts,1/k)}
  cx.restore();
  if(S.sel&&S.objs.includes(S.sel)){const[bx,by,bw,bh]=bbox(S.sel);cx.save();cx.setLineDash([6/k,4/k]);cx.lineWidth=1.5/k;cx.strokeStyle='#f2a93b';cx.strokeRect(bx,by,bw,bh);cx.restore()}
 }
@@ -484,6 +494,7 @@ function startTool(p,e){const t=S.tool;
  if(t==='sel'){const o=topHit(p);const was=S.sel;S.sel=o;updSel();if(o){pushHist();act={k:'msel',o,last:p,moved:false,was}}draw();return}
  if(t==='erase'){pushHist();act={k:'erase',any:false};eraseAt(p);return}
  if(t==='zone'){const z=zoneAtBadge(p);if(z){flashZone(z.n);return}act={k:'zone',pts:[[p.x,p.y]]};return}
+ if(t==='note'){const o={pts:[[p.x,p.y,pressure(e)]]};S.notes.push(o);act={k:'note',o};draw();return}
 }
 function snapAng(o,p,e){if(!e.shiftKey)return[p.x,p.y];const dx=p.x-o.a[0],dy=p.y-o.a[1],an=Math.round(Math.atan2(dy,dx)/(Math.PI/12))*(Math.PI/12),l=Math.hypot(dx,dy);return[o.a[0]+l*Math.cos(an),o.a[1]+l*Math.sin(an)]}
 function toolMove(p,e){if(!act)return;
@@ -491,6 +502,7 @@ function toolMove(p,e){if(!act)return;
  else if(act.k==='shape'){act.o.b=snapAng(act.o,p,e)}
  else if(act.k==='msel'){moveObj(act.o,p.x-act.last.x,p.y-act.last.y);act.last=p;act.moved=true}
  else if(act.k==='erase')eraseAt(p);
+ else if(act.k==='note'){const P=act.o.pts,l=P[P.length-1];if(Math.hypot(p.x-l[0],p.y-l[1])>.6/S.v.k)P.push([p.x,p.y,pressure(e)])}
  else if(act.k==='zone'){const P=act.pts,l=P[P.length-1];if(Math.hypot(p.x-l[0],p.y-l[1])>2/S.v.k)P.push([p.x,p.y])}
  else if(act.k==='crop')cropMove(p);
 }
@@ -528,19 +540,51 @@ function renderZones(){const el=$('#zList');el.innerHTML='';
   d.innerHTML=`<span class="zb" style="background:${col[0]}">${z.n}</span><textarea id="zt${z.n}" placeholder="Zona ${z.n} (${col[1]}): ¿qué hacer aquí? Ej.: teja arquitectónica color terracota"></textarea><button class="zx" title="Quitar zona ${z.n}" aria-label="Quitar zona ${z.n}">✕</button><div class="chips"></div>`;
   const ta=d.querySelector('textarea');ta.value=z.text;ta.oninput=()=>{z.text=ta.value};
   d.querySelector('.zx').onclick=()=>{S.zones.splice(S.zones.indexOf(z),1);renumberZones();renderZones();draw()};
+  {const hb=document.createElement('button');hb.className='chip hw';hb.textContent='✍ Escribir a mano';hb.onclick=()=>openPad('Zona '+z.n+': ¿qué hacer aquí?',t=>{ta.value=(ta.value.trim()?ta.value.trim()+' ':'')+t;z.text=ta.value});d.querySelector('.chips').appendChild(hb)}
   ZCHIPS.forEach(([l,t])=>{const b=document.createElement('button');b.className='chip';b.textContent=l;b.onclick=()=>{ta.value=(ta.value.trim()?ta.value.trim()+' ':'')+t;z.text=ta.value;ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length)};d.querySelector('.chips').appendChild(b)});
   el.appendChild(d)})}
 function flashZone(n){$('#panel').classList.remove('min');syncSheetTg();const d=$(`#zList .zc[data-n="${n}"]`);if(!d)return;d.scrollIntoView({block:'nearest',behavior:'smooth'});d.classList.add('flash');setTimeout(()=>d.classList.remove('flash'),1600)}
-function clearZones(){S.zones=[];renderZones()}
+function clearZones(){S.zones=[];S.notes=[];renderZones()}
+function drawNotes(g,notes,big){const w=big/260;for(const o of notes){const P=o.pts;g.save();g.lineCap=g.lineJoin='round';
+ for(const pass of [[w*2.2,'#111'],[w,'#fff']]){g.strokeStyle=pass[1];g.lineWidth=pass[0];g.beginPath();g.moveTo(P[0][0],P[0][1]);for(let i=1;i<P.length;i++)g.lineTo(P[i][0],P[i][1]);if(P.length===1)g.lineTo(P[0][0]+.1,P[0][1]);g.stroke()}g.restore()}}
+function noteTool(){if(!S.base)return toast('Primero abre una imagen');S.tool=S.tool==='note'?'move':'note';setPanel('ai')}
+/* escritura a mano: libreta que la IA convierte en texto */
+function openPad(title,onText){const m=$('#modal'),b=$('#mbox');
+ b.innerHTML=`<h2>${title}</h2><p class="hint">Escribe con el Apple Pencil o el dedo. Luego toca «Convertir a texto» y la IA leerá tu letra.</p><canvas id="padCv"></canvas><div class="btns"><button class="btn" id="padClr">Borrar</button><button class="btn" id="padNo">Cancelar</button><button class="btn pri" id="padOk">Convertir a texto</button></div><div class="hint" id="padMsg"></div>`;
+ m.hidden=false;const cv2=$('#padCv'),r=cv2.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);cv2.width=r.width*d;cv2.height=r.height*d;const g=cv2.getContext('2d');
+ const clr=()=>{g.fillStyle='#fff';g.fillRect(0,0,cv2.width,cv2.height)};clr();g.lineCap=g.lineJoin='round';g.strokeStyle='#111';let last=null,inked=false;
+ cv2.onpointerdown=e=>{cv2.setPointerCapture(e.pointerId);last={x:e.offsetX*d,y:e.offsetY*d};inked=true};
+ cv2.onpointermove=e=>{if(!last)return;const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];for(const ev of evs){const p={x:ev.offsetX*d,y:ev.offsetY*d};g.lineWidth=(ev.pointerType==='pen'?1.5+3*(ev.pressure||.5):3.2)*d;g.beginPath();g.moveTo(last.x,last.y);g.lineTo(p.x,p.y);g.stroke();last=p}};
+ cv2.onpointerup=cv2.onpointercancel=()=>{last=null};
+ const done=()=>{m.hidden=true;b.innerHTML=''};
+ $('#padClr').onclick=()=>{clr();inked=false};$('#padNo').onclick=done;m.onclick=e=>{if(e.target===m)done()};
+ $('#padOk').onclick=async()=>{if(!inked)return toast('Primero escribe algo');const msg=$('#padMsg');msg.className='hint';msg.textContent='Leyendo tu letra…';$('#padOk').disabled=true;
+  try{const t=await transcribe(cloneCanvas(cv2,1400));if(!t||t==='?'){msg.className='hint err';msg.style.color='var(--danger)';msg.textContent='No pude leer la letra. Escribe un poco más grande e intenta de nuevo.';$('#padOk').disabled=false;return}
+   done();onText(t)}catch(err){msg.style.color='var(--danger)';msg.textContent=err.message||String(err);$('#padOk').disabled=false}}}
+async function transcribe(c){const b64=await canvasToB64(c,'image/png');const p='Transcribe exactamente el texto escrito a mano en esta imagen (español). Responde solo con el texto, sin comillas ni explicaciones. Si no hay texto legible responde solo: ?';
+ if(cfg.gkey){for(const m of ['gemini-flash-latest','gemini-2.5-flash','gemini-3-flash']){const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':cfg.gkey},body:JSON.stringify({contents:[{role:'user',parts:[{text:p},{inline_data:{mime_type:'image/png',data:b64}}]}]})});
+   if(r.status===404)continue;const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(apiErr(j.error&&j.error.message,r.status));const c0=(j.candidates||[])[0];return((c0&&c0.content&&c0.content.parts)||[]).map(x=>x.text||'').join('').trim()}}
+ if(cfg.okey){for(const m of ['gpt-5-mini','gpt-4.1-mini','gpt-4o-mini']){const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+cfg.okey},body:JSON.stringify({model:m,messages:[{role:'user',content:[{type:'text',text:p},{type:'image_url',image_url:{url:'data:image/png;base64,'+b64}}]}]})});
+   const j=await r.json().catch(()=>({}));if(r.status===404||(j.error&&/model/i.test(j.error.code||j.error.message||'')&&r.status<500&&r.status!==401&&r.status!==429))continue;if(!r.ok)throw new Error(apiErr(j.error&&j.error.message,r.status));return((j.choices||[])[0]?.message?.content||'').trim()}}
+ if(!cfg.gkey&&!cfg.okey){openCfg('Para leer tu letra la IA debe estar conectada.');throw new Error('Conecta la IA para poder leer tu letra.')}
+ throw new Error('No encontré un modelo disponible para leer la letra.')}
+/* conexión de la IA */
+function connLink(){const d={g:cfg.gkey,o:cfg.okey,gm:cfg.gmodel,om:cfg.omodel,oq:cfg.oq,p:cfg.prov};return location.origin+location.pathname+'#conectar='+encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(d)))))}
+function readLink(txt){const m=/#conectar=([^\s#]+)/.exec(txt||'');if(!m)return false;try{const d=JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
+ if(d.g)cfg.gkey=d.g;if(d.o)cfg.okey=d.o;if(d.gm)cfg.gmodel=d.gm;if(d.om)cfg.omodel=d.om;if(d.oq)cfg.oq=d.oq;if(d.p)cfg.prov=d.p;saveCfg();syncProv();return true}catch(e){return false}}
+async function testKey(which){try{if(which==='g'){const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',{headers:{'x-goog-api-key':cfg.gkey}});return r.ok?[true,'Conectado ✓']:[false,r.status===400||r.status===401||r.status===403?'Clave no válida':'Error '+r.status]}
+ const r=await fetch('https://api.openai.com/v1/models',{headers:{Authorization:'Bearer '+cfg.okey}});return r.ok?[true,'Conectado ✓']:[false,r.status===401?'Clave no válida':'Error '+r.status]}catch(e){return[false,'Sin conexión a internet']}}
+function updConn(){const el=$('#aiConn');if(!el)return;const g=!!cfg.gkey,o=!!cfg.okey;el.innerHTML=`<span class="dot ${g?'ok':''}"></span>Google ${g?'conectado':'sin clave'} <span class="dot ${o?'ok':''}"></span>OpenAI ${o?'conectado':'sin clave'} <button class="chip" id="connBtn">${g||o?'Ajustes de IA':'Conectar IA'}</button>`;$('#connBtn').onclick=()=>openCfg()}
 function zoneTool(){if(!S.base)return toast('Primero abre una imagen');S.tool=S.tool==='zone'?'move':'zone';setPanel('ai')}
 function zoneMask(zs,w,h){const m=newCanvas(w,h),g=m.getContext('2d');g.fillStyle='#000';g.fillRect(0,0,w,h);g.globalCompositeOperation='destination-out';g.lineJoin='round';g.lineWidth=Math.max(w,h)*.012;
  for(const z of zs){g.beginPath();z.pts.forEach((q,i)=>i?g.lineTo(q[0]*w,q[1]*h):g.moveTo(q[0]*w,q[1]*h));g.closePath();g.fill();g.stroke()}return m}
-function zonePrompt(zs,general,{prov,ref,annotated}){const L=[];
- if(zs.length){L.push(annotated?'Te envío la foto original (primera imagen) y la misma foto con zonas numeradas marcadas con contornos de color (segunda imagen). Aplica los cambios sobre la foto original, cada uno SOLO dentro de su zona:':'Aplica los cambios sobre la foto, cada uno SOLO dentro de su zona (indicada por la máscara):');
-  zs.forEach(z=>L.push(`- Zona ${z.n} (${annotated?'contorno '+ZCOL[(z.n-1)%ZCOL.length][1]+', ':''}ubicada ${zonePlace(z)}): ${z.text.trim()}`));
+function zonePrompt(zs,general,{prov,ref,annotated,notes}){const L=[];
+ if(zs.length||notes){L.push(annotated?'Te envío la foto original (primera imagen) y la misma foto con zonas numeradas marcadas con contornos de color (segunda imagen). Aplica los cambios sobre la foto original, cada uno SOLO dentro de su zona:':'Aplica los cambios sobre la foto, cada uno SOLO dentro de su zona (indicada por la máscara):');
+  zs.forEach(z=>L.push(`- Zona ${z.n} (${annotated?'contorno '+ZCOL[(z.n-1)%ZCOL.length][1]+', ':''}ubicada ${zonePlace(z)}): ${z.text.trim()||'ver la nota escrita a mano junto al número '+z.n}`));
+  if(notes)L.push('En la segunda imagen también hay notas escritas a mano sobre la foto (trazos blancos con borde negro). Léelas: son instrucciones del usuario para la parte de la foto donde están escritas o para la zona numerada más cercana. Aplícalas y no dejes esos trazos en el resultado.');
   if(general)L.push(`Indicación general para toda la imagen: ${general}`);
-  L.push('Todo lo que está fuera de las zonas debe quedar exactamente igual.');
-  if(annotated)L.push('El resultado final NO debe mostrar números, contornos ni colores de las marcas: son solo una guía.')}
+  L.push(notes?'Todo lo que no se pide cambiar debe quedar exactamente igual.':'Todo lo que está fuera de las zonas debe quedar exactamente igual.');
+  if(annotated)L.push('El resultado final NO debe mostrar números, contornos, notas escritas ni colores de las marcas: son solo una guía.')}
  else L.push(`Edita la imagen según esta instrucción: ${general}`);
  L.push('Conserva la composición, el encuadre, la perspectiva, las proporciones y la iluminación originales. No agregues textos, logotipos ni marcas de agua.');
  if(ref)L.push('La última imagen adjunta es una referencia de material, estilo u objeto; úsala como guía para el cambio.');
@@ -623,7 +667,7 @@ const QUICK=[
  ['Plano escaneado','Convierte esta foto de un plano o documento en una imagen escaneada limpia: vista de frente con la perspectiva corregida, fondo blanco uniforme, líneas y textos negros y nítidos, sin sombras.'],
  ['Cambiar material','Cambia el material de [elemento] por [nuevo material], conservando la iluminación y la perspectiva.']
 ];
-function needKey(){const k=cfg.prov==='google'?cfg.gkey:cfg.okey;if(!k){openCfg('Para usar la IA pega primero tu clave de '+(cfg.prov==='google'?'Google AI Studio':'OpenAI')+'.');return true}return false}
+function needKey(){if(!cfg[cfg.prov==='google'?'gkey':'okey']){if(cfg.gkey)cfg.prov='google';else if(cfg.okey)cfg.prov='openai';syncProv()}const k=cfg.prov==='google'?cfg.gkey:cfg.okey;if(!k){openCfg('Para usar la IA pega primero tu clave de '+(cfg.prov==='google'?'Google AI Studio':'OpenAI')+'.');return true}return false}
 function wrapPrompt(p,{mask,ref,prov}){let t=`Edita la imagen según esta instrucción: «${p}». Conserva la composición, el encuadre, la perspectiva y las proporciones originales, y todo lo que la instrucción no pida cambiar. No agregues textos, logotipos ni marcas de agua.`;
  if(mask&&prov==='google')t+=' Se adjuntan dos imágenes: la primera es la original y la segunda es la misma imagen con una zona pintada de rojo semitransparente. Aplica el cambio únicamente dentro de esa zona sobre la imagen original y deja el resto idéntico. El resultado no debe tener ningún tono rojo agregado ni la marca de la zona.';
  if(mask&&prov==='openai')t+=' Cambia solamente la zona indicada por la máscara.';
@@ -637,7 +681,7 @@ async function gemini(prompt,imgs,aspect){const body={contents:[{role:'user',par
  for(const p of parts){const d=p.inlineData||p.inline_data;if(d&&!p.thought)img=d;if(p.text&&!p.thought)txt+=p.text}
  if(!img)throw new Error(txt?('El modelo respondió sin imagen: '+txt.slice(0,240)):'El modelo no devolvió imagen ('+((cand&&cand.finishReason)||(j.promptFeedback&&j.promptFeedback.blockReason)||'sin detalle')+'). Prueba con otra instrucción.');
  return'data:'+(img.mimeType||img.mime_type||'image/png')+';base64,'+img.data}
-async function oaEdit(prompt,imgBlob,maskBlob,refBlob){const fd=new FormData();fd.append('model',cfg.omodel);fd.append('prompt',prompt);fd.append('image[]',imgBlob,'imagen.png');
+async function oaEdit(prompt,imgBlob,maskBlob,refBlob,guideBlob){const fd=new FormData();fd.append('model',cfg.omodel);fd.append('prompt',prompt);fd.append('image[]',imgBlob,'imagen.png');if(guideBlob)fd.append('image[]',guideBlob,'guia.jpg');
  if(refBlob)fd.append('image[]',refBlob,'referencia.png');if(maskBlob)fd.append('mask',maskBlob,'mascara.png');fd.append('quality',cfg.oq);fd.append('size','auto');
  const r=await fetch('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:'Bearer '+cfg.okey},body:fd});return oaOut(r)}
 async function oaGen(prompt,asp){const size={'1:1':'1024x1024','4:3':'1536x1024','16:9':'1536x1024','3:4':'1024x1536','9:16':'1024x1536'}[asp]||'auto';
@@ -648,8 +692,8 @@ async function runAI(kind){if(needKey())return;const general=$('#aiPrompt').valu
  const st=$('#aiStatus');st.className='hint';st.textContent='';
  if(kind==='new'){if(!general){$('#aiPrompt').focus();return toast('Describe en el recuadro 2 la imagen que quieres crear')}}
  else{if(!S.base)return toast('Primero abre una imagen o crea una nueva');
-  const empty=S.zones.find(z=>!z.text.trim());if(empty){flashZone(empty.n);return toast('Escribe qué hacer en la zona '+empty.n+', o quítala')}
-  if(!zs.length&&!general){return toast('Marca una zona y escribe qué hacer, o escribe una indicación general')}
+  const empty=S.zones.find(z=>!z.text.trim());if(empty&&!S.notes.length){flashZone(empty.n);return toast('Escribe qué hacer en la zona '+empty.n+', o quítala')}
+  if(!zs.length&&!general&&!S.notes.length&&!S.zones.length){return toast('Marca una zona y escribe qué hacer, o escribe una indicación general')}
   if(/\[elemento\]|\[nuevo material\]/.test(general))return toast('Reemplaza [elemento] y [nuevo material] en la indicación')}
  const prov=cfg.prov;S.lastAI={kind};S.tool=S.tool==='zone'?'move':S.tool;setPanel('ai',true);
  $$('#aiEdit,#aiNew,#aiRetry').forEach(b=>b.disabled=true);const t0=Date.now();
@@ -657,15 +701,15 @@ async function runAI(kind){if(needKey())return;const general=$('#aiPrompt').valu
   if(kind==='new'){busy(true,'Creando la imagen… suele tardar entre 10 y 60 segundos');const asp=$('#aiAsp').value;const url=prov==='google'?await gemini(general,[],asp):await oaGen(general,asp);c=cloneCanvas(await loadImg(url))}
   else{const incl=$('#aiAnn').checked;S.pendingIncl=incl;const refC=S.ref?cloneCanvas(S.ref,1024):null;
    let cur=composite(incl,prov==='google'?2048:1536);
-   const steps=S.zmode==='seq'&&zs.length>1?zs.map((z,k)=>({zs:[z],gen:k===zs.length-1?general:''})):[{zs,gen:general}];
+   const allZ=S.notes.length?S.zones:zs;const steps=S.zmode==='seq'&&allZ.length>1&&!S.notes.length?allZ.map((z,k)=>({zs:[z],gen:k===allZ.length-1?general:''})):[{zs:allZ,gen:general}];
    for(let k=0;k<steps.length;k++){const stp=steps[k];busy(true,steps.length>1?`Zona ${stp.zs[0].n} (${k+1} de ${steps.length})… la IA está trabajando`:'La IA está trabajando… suele tardar entre 10 y 60 segundos');
-    const ann=stp.zs.length>0,src=cur;let url;
+    const nts=S.notes.length>0,ann=stp.zs.length>0||nts,src=cur;let url;const guide=async()=>{const ov=cloneCanvas(src),sc=ov.width/Wd();const gg=ov.getContext('2d');drawZones(gg,ov.width,ov.height,stp.zs,Math.max(ov.width,ov.height)/900);if(nts){gg.save();gg.scale(sc,sc);drawNotes(gg,S.notes,Math.max(Wd(),Hd()));gg.restore()}return ov};
     if(prov==='google'){const imgs=[{mime:'image/jpeg',b64:await canvasToB64(src,'image/jpeg',.92)}];
-     if(ann){const ov=cloneCanvas(src);drawZones(ov.getContext('2d'),ov.width,ov.height,stp.zs,Math.max(ov.width,ov.height)/900);imgs.push({mime:'image/jpeg',b64:await canvasToB64(ov,'image/jpeg',.9)})}
+     if(ann){const ov=await guide();imgs.push({mime:'image/jpeg',b64:await canvasToB64(ov,'image/jpeg',.9)})}
      if(refC)imgs.push({mime:'image/jpeg',b64:await canvasToB64(refC,'image/jpeg',.9)});
-     url=await gemini(zonePrompt(stp.zs,stp.gen,{prov,ref:!!refC,annotated:ann}),imgs)}
-    else{const mb=ann?await canvasToBlob(zoneMask(stp.zs,src.width,src.height)):null;
-     url=await oaEdit(zonePrompt(stp.zs,stp.gen,{prov,ref:!!refC,annotated:false}),await canvasToBlob(src),mb,refC?await canvasToBlob(refC):null)}
+     url=await gemini(zonePrompt(stp.zs,stp.gen,{prov,ref:!!refC,annotated:ann,notes:nts}),imgs)}
+    else{const mb=stp.zs.length&&!nts?await canvasToBlob(zoneMask(stp.zs,src.width,src.height)):null;const gb=ann?await canvasToBlob(await guide(),'image/jpeg',.9):null;
+     url=await oaEdit(zonePrompt(stp.zs,stp.gen,{prov,ref:!!refC,annotated:ann,notes:nts}),await canvasToBlob(src),mb,refC?await canvasToBlob(refC):null,gb)}
     const out=cloneCanvas(await loadImg(url));cur=(out.width!==src.width||out.height!==src.height)?(()=>{const r=newCanvas(src.width,src.height);r.getContext('2d').drawImage(out,0,0,src.width,src.height);return r})():out}
    c=cur}
   if(kind==='new'){if(!S.versions.length&&S.base)addVersion(S.base,'Original');setNewBase(c);addVersion(c,'Creada');st.textContent='Imagen creada en '+Math.round((Date.now()-t0)/1000)+' s.'}
@@ -691,16 +735,36 @@ function ask(title,fields,okLabel='Aceptar',extraHtml=''){return new Promise(res
  $('#m_no').onclick=()=>done(null);$('#m_ok').onclick=()=>{const o={};fields.forEach(f=>o[f.id]=$('#m_'+f.id).value);done(o)};
  b.querySelectorAll('input').forEach(i=>i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#m_ok').click()}}));
  m.onclick=e=>{if(e.target===m)done(null)}})}
-async function openCfg(msg){const r=await ask('Configuración de IA',[
-  {id:'prov',label:'Motor predeterminado',type:'select',options:[['google','Google · Nano Banana'],['openai','OpenAI · GPT Image']],value:cfg.prov},
-  {id:'gkey',label:'Clave de Google AI Studio',type:'password',value:cfg.gkey,ph:'AIza…'},
-  {id:'gmodel',label:'Modelo de Google',type:'select',options:[['gemini-3.1-flash-image','Nano Banana 2 · rápido y económico'],['gemini-3-pro-image','Nano Banana Pro · máxima calidad'],['gemini-2.5-flash-image','Nano Banana · versión anterior']],value:cfg.gmodel},
-  {id:'okey',label:'Clave de OpenAI',type:'password',value:cfg.okey,ph:'sk-…'},
-  {id:'omodel',label:'Modelo de OpenAI',type:'select',options:[['gpt-image-2.6-sunburst','GPT Image 2.6 Sunburst · máxima calidad'],['gpt-image-2.6-flare','GPT Image 2.6 Flare · rápido'],['gpt-image-2','GPT Image 2']],value:cfg.omodel},
-  {id:'oq',label:'Calidad en OpenAI',type:'select',options:[['high','Alta'],['medium','Media'],['low','Baja (más barata)']],value:cfg.oq}],'Guardar',
-  (msg?`<p style="margin:0;color:var(--acc)">${msg}</p>`:'')+`<p class="hint" style="margin:0">Las claves se guardan solo en este equipo y se envían únicamente a Google u OpenAI. Cada edición se cobra en tu cuenta del servicio. Consigue la clave en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> o en <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>.</p>`);
- if(!r)return;Object.assign(cfg,{prov:r.prov,gkey:r.gkey.trim(),gmodel:r.gmodel,okey:r.okey.trim(),omodel:r.omodel,oq:r.oq});saveCfg();syncProv();toast('Configuración guardada')}
-function syncProv(){$$('#aiProv button').forEach(b=>b.classList.toggle('on',b.dataset.v===cfg.prov))}
+function openCfg(msg){const m=$('#modal'),b=$('#mbox');
+ const opt=(arr,v)=>arr.map(o=>`<option value="${o[0]}"${o[0]===v?' selected':''}>${o[1]}</option>`).join('');
+ b.innerHTML=`<h2>Conectar la IA</h2>${msg?`<p style="margin:0;color:var(--acc)">${msg}</p>`:''}
+ <div class="kbox"><b>¿Ya la conectaste en otro equipo?</b><p class="hint">Pega aquí el enlace de conexión que te enviaste y listo.</p><div class="krow"><input type="text" id="kLink" placeholder="https://…#conectar=…" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn" id="kLinkP">Pegar</button></div></div>
+ <div class="kbox"><div class="kh"><b>Google · Nano Banana</b><span class="kst" id="kstG"></span></div>
+  <div class="krow"><input type="password" id="kG" placeholder="Pega tu clave AIza…" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn" id="kGp">Pegar</button></div>
+  <label class="f">Modelo<select id="mG">${opt([['gemini-3.1-flash-image','Nano Banana 2 · rápido y económico'],['gemini-3-pro-image','Nano Banana Pro · máxima calidad'],['gemini-2.5-flash-image','Nano Banana · versión anterior']],cfg.gmodel)}</select></label>
+  <a class="hint" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Conseguir clave de Google →</a></div>
+ <div class="kbox"><div class="kh"><b>OpenAI · GPT Image</b><span class="kst" id="kstO"></span></div>
+  <div class="krow"><input type="password" id="kO" placeholder="Pega tu clave sk-…" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn" id="kOp">Pegar</button></div>
+  <label class="f">Modelo<select id="mO">${opt([['gpt-image-2.6-sunburst','GPT Image 2.6 Sunburst · máxima calidad'],['gpt-image-2.6-flare','GPT Image 2.6 Flare · rápido'],['gpt-image-2','GPT Image 2']],cfg.omodel)}</select></label>
+  <label class="f">Calidad<select id="qO">${opt([['high','Alta'],['medium','Media'],['low','Baja (más barata)']],cfg.oq)}</select></label>
+  <a class="hint" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Conseguir clave de OpenAI →</a></div>
+ <div class="btns"><button class="btn pri" id="kSave">Guardar y probar conexión</button></div>
+ <div class="kbox" id="linkBox" hidden><b>Conectar mis otros equipos</b><p class="hint">Envíate este enlace (AirDrop, WhatsApp o correo) y ábrelo en el otro equipo, o cópialo y pégalo en esta misma ventana allá. Lleva tus claves: no lo compartas con nadie.</p><div class="btns"><button class="btn pri" id="kShare">Enviar enlace</button><button class="btn" id="kCopy">Copiar enlace</button></div></div>
+ <p class="hint" style="margin:0">Las claves se guardan solo en este equipo y se envían únicamente a Google u OpenAI. Cada uso se cobra en tu cuenta del servicio.</p>
+ <div class="btns"><button class="btn" id="kClose">Cerrar</button></div>`;
+ m.hidden=false;$('#kG').value=cfg.gkey;$('#kO').value=cfg.okey;$('#linkBox').hidden=!(cfg.gkey||cfg.okey);
+ const close=()=>{m.hidden=true;b.innerHTML='';updConn()};$('#kClose').onclick=close;m.onclick=e=>{if(e.target===m)close()};
+ const paste=async(id)=>{try{const t=(await navigator.clipboard.readText()).trim();$(id).value=t;$(id).dispatchEvent(new Event('input'))}catch(e){$(id).focus();toast('Mantén presionado el recuadro y elige «Pegar»')}};
+ $('#kGp').onclick=()=>paste('#kG');$('#kOp').onclick=()=>paste('#kO');$('#kLinkP').onclick=()=>paste('#kLink');
+ const fromAny=v=>{if(readLink(v)){$('#kG').value=cfg.gkey;$('#kO').value=cfg.okey;$('#kLink').value='';$('#kSave').click();return true}return false};
+ ['#kLink','#kG','#kO'].forEach(id=>$(id).addEventListener('input',e=>{if(/#conectar=/.test(e.target.value))fromAny(e.target.value)}));
+ $('#kSave').onclick=async()=>{Object.assign(cfg,{gkey:$('#kG').value.trim(),okey:$('#kO').value.trim(),gmodel:$('#mG').value,omodel:$('#mO').value,oq:$('#qO').value});
+  if(!cfg[cfg.prov==='google'?'gkey':'okey'])cfg.prov=cfg.gkey?'google':(cfg.okey?'openai':cfg.prov);saveCfg();syncProv();updConn();
+  for(const[w,el]of[['g','#kstG'],['o','#kstO']]){const has=w==='g'?cfg.gkey:cfg.okey;const e2=$(el);if(!has){e2.textContent='';continue}e2.className='kst';e2.textContent='Probando…';const[ok,t]=await testKey(w);e2.className='kst '+(ok?'ok':'bad');e2.textContent=t}
+  $('#linkBox').hidden=!(cfg.gkey||cfg.okey);if(cfg.gkey||cfg.okey)toast('Claves guardadas')};
+ $('#kCopy').onclick=async()=>{const u=connLink();try{await navigator.clipboard.writeText(u);toast('Enlace copiado')}catch(e){$('#kLink').value=u;$('#kLink').select();toast('Copia el enlace del recuadro de arriba')}};
+ $('#kShare').onclick=async()=>{const u=connLink();if(navigator.share){try{await navigator.share({title:'Conectar Taller de Imagen',url:u});return}catch(e){if(e.name==='AbortError')return}}$('#kCopy').click()}}
+function syncProv(){$$('#aiProv button').forEach(b=>b.classList.toggle('on',b.dataset.v===cfg.prov));updConn()}
 
 /* ---------- herramientas y paneles ---------- */
 const DTOOLS=[['pen','Lápiz','pen'],['hl','Resaltar','hl'],['arrow','Flecha','arrow'],['line','Línea','line'],['rect','Rectángulo','rect'],['ell','Círculo','ell'],['text','Texto','text'],['cota','Cota','cota'],['num','Número','num'],['sel','Mover objeto','sel'],['erase','Borrar dibujo','erase'],['move','Mover vista','move']];
@@ -710,7 +774,7 @@ const HINTS={move:'Arrastra para mover la foto. Pellizca con dos dedos para acer
  line:'Arrastra para trazar una línea recta.',rect:'Arrastra en diagonal para dibujar el rectángulo.',ell:'Arrastra en diagonal para dibujar el círculo.',text:'Toca donde quieres escribir.',cota:'Arrastra de un extremo al otro y escribe la medida.',
  num:'Toca para poner 1, 2, 3… sobre daños o ítems.',erase:'Toca o pasa sobre un dibujo para borrarlo. La foto no se borra.',
  crop:'Arrastra las esquinas del marco. Luego toca «Aplicar recorte».',adjust:'Prueba un arreglo rápido o mueve los ajustes. Luego «Aplicar ajustes».',
- stamp:'Llena los datos de la obra y toca «Insertar sello en la foto».',ai:'Toca «+ Marcar zona» y encierra cada parte que quieres cambiar.',zone:'Encierra con el lápiz la parte a cambiar, o tócala. Aparecerá su número.'};
+ stamp:'Llena los datos de la obra y toca «Insertar sello en la foto».',ai:'Toca «+ Marcar zona» y encierra cada parte que quieres cambiar.',zone:'Encierra con el lápiz la parte a cambiar, o tócala. Aparecerá su número.',note:'Escribe con el lápiz sobre la foto lo que quieres en cada parte. La IA leerá tu letra.'};
 const PANEL_OF={crop:'crop',adjust:'adjust',stamp:'stamp',ai:'ai'};
 function setTip(t){const el=$('#tip');if(!S.base||!t){el.hidden=true;return}el.textContent=t;el.hidden=false;el.classList.remove('fade');clearTimeout(setTip._t);setTip._t=setTimeout(()=>el.classList.add('fade'),5000)}
 function buildUI(){
@@ -737,11 +801,11 @@ function pickTool(t){if(S.mode&&t!==S.mode){cancelMode()}
   setPanel(PANEL_OF[t]);if(t==='crop')enterCrop();if(t==='adjust')enterAdjust();return}
  S.tool=t;S.lastDraw=t;if(t!=='sel'){S.sel=null;updSel()}setPanel('draw');draw()}
 function setPanel(p,keepTool){S.panel=p;$('#pDraw').hidden=p!=='draw';$('#pCrop').hidden=p!=='crop';$('#pAdj').hidden=p!=='adjust';$('#pStamp').hidden=p!=='stamp';$('#pAI').hidden=p!=='ai';
- if(p!=='ai'&&S.tool==='zone')S.tool=S.lastDraw||'pen';if(p==='ai'){renderVers();if(S.tool!=='zone')S.tool='move'}
+ if(p!=='ai'&&(S.tool==='zone'||S.tool==='note'))S.tool=S.lastDraw||'pen';if(p==='ai'){renderVers();if(S.tool!=='zone'&&S.tool!=='note')S.tool='move'}
  $$('#rail .md').forEach(b=>b.classList.toggle('on',b.dataset.m===p));$$('#dtools .tb').forEach(b=>b.classList.toggle('on',b.dataset.t===S.tool));
- $('#zAdd').classList.toggle('on',S.tool==='zone');$('#zAdd').textContent=S.tool==='zone'?'✓ Marcando zonas (toca para terminar)':'+ Marcar zona';
+ $('#zAdd').classList.toggle('on',S.tool==='zone');$('#zAdd').textContent=S.tool==='zone'?'✓ Marcando zonas (toca para terminar)':'+ Marcar zona';$('#nAdd').classList.toggle('pri',S.tool==='note');$('#nAdd').textContent=S.tool==='note'?'✓ Escribiendo notas (toca para terminar)':'✍ Notas a mano sobre la foto';
  $('#sheetTitle').textContent={draw:'Dibujar · '+(DTOOLS.find(t=>t[0]===S.tool)||['','Lápiz'])[1],crop:'Recortar y girar',adjust:'Luz y color',stamp:'Sello de registro con datos de la obra',ai:'Editar con inteligencia artificial'}[p];
- if(!keepTool)$('#panel').classList.remove('min');syncSheetTg();setTip(p==='draw'?HINTS[S.tool]:(p==='ai'&&S.tool==='zone')?HINTS.zone:HINTS[p]);draw()}
+ if(!keepTool)$('#panel').classList.remove('min');syncSheetTg();setTip(p==='draw'?HINTS[S.tool]:(p==='ai'&&(S.tool==='zone'||S.tool==='note'))?HINTS[S.tool]:HINTS[p]);draw()}
 function syncSheetTg(){$('#sheetTg').textContent=$('#panel').classList.contains('min')?'Mostrar opciones':'Ocultar'}
 
 function updSel(){const s=S.sel;$('#selBox').hidden=!s;if(s){$('#sEdit').hidden=!(s.t==='text'||s.t==='cota');}propChange.h=false}
@@ -772,7 +836,7 @@ function bind(){
  $('#aApply').onclick=applyAdjust;$('#aCancel').onclick=()=>{cancelMode();setPanel('draw')};
  $$('#stPos button').forEach(b=>b.onclick=()=>$$('#stPos button').forEach(x=>x.classList.toggle('on',x===b)));$('#stAdd').onclick=addStamp;
  $$('#aiProv button').forEach(b=>b.onclick=()=>{cfg.prov=b.dataset.v;saveCfg();syncProv()});
- $('#zAdd').onclick=zoneTool;$('#zClear').onclick=()=>{clearZones();draw()};
+ $('#zAdd').onclick=zoneTool;$('#nAdd').onclick=noteTool;$('#hwGen').onclick=()=>openPad('Indicación general',t=>{const a=$('#aiPrompt');a.value=(a.value.trim()?a.value.trim()+' ':'')+t});$('#zClear').onclick=()=>{clearZones();draw()};
  $$('#zMode button').forEach(b=>b.onclick=()=>{S.zmode=b.dataset.v;$$('#zMode button').forEach(x=>x.classList.toggle('on',x===b))});
  $('#aiEdit').onclick=()=>runAI('edit');$('#aiNew').onclick=()=>runAI('new');$('#aiRetry').onclick=()=>{discardPending();runAI(S.lastAI?S.lastAI.kind:'edit')};
  $('#aiApply').onclick=applyPending;$('#aiDiscard').onclick=discardPending;
@@ -796,6 +860,7 @@ function bind(){
  window.addEventListener('beforeunload',e=>{if(S.dirty&&S.base){e.preventDefault();e.returnValue=''}});
  document.addEventListener('gesturestart',e=>e.preventDefault());
 }
+if(readLink(location.hash)){try{history.replaceState(null,'',location.pathname)}catch(e){}setTimeout(()=>toast('IA conectada en este equipo ✓',3500),300)}
 buildUI();bind();renderZones();syncProv();setColor('#ff3b30');pickTool('pen');resize();
 </script>
 </body>
